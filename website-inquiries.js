@@ -1,26 +1,22 @@
 (()=>{
 const API='https://ptzurrebwksuvuakgvym.supabase.co/functions/v1/website-inquiries-list';
-const SUPA='https://ptzurrebwksuvuakgvym.supabase.co';
-const KEY='sb_publishable_6Bkkj4-O_mw2YY9DGo3E2g_qnew4zZL';
-let loadedIds=new Set();
+const KEY='sb_publishable_6Bkkj4-O_mw2YY9DGo3E2g_qnew4zZL';let busy=false;
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function ensurePanel(){
- const pipeline=document.getElementById('pipeline');if(!pipeline)return null;
- let panel=document.getElementById('websiteInquiryPanel');if(panel)return panel;
- panel=document.createElement('section');panel.id='websiteInquiryPanel';panel.className='panel';
- panel.innerHTML='<div style="display:flex;justify-content:space-between;gap:15px;align-items:center;flex-wrap:wrap"><div><span class="kicker">AUTOMATIC WEBSITE LEADS</span><h2 style="margin:6px 0">Website Inquiries</h2><p class="muted" style="margin:0">New inquiries from vyracollectives.org appear here automatically, newest first.</p></div><button class="btn secondary" id="refreshWebsiteInquiries">↻ Refresh Website Leads</button></div><div id="websiteInquiryList" style="display:grid;gap:10px;margin-top:18px"><div class="muted">Loading website inquiries…</div></div>';
- const records=[...pipeline.querySelectorAll('section.panel')].find(x=>x.querySelector('h2')?.textContent.trim()==='Lead Records');
- records?pipeline.insertBefore(panel,records):pipeline.appendChild(panel);
- panel.querySelector('#refreshWebsiteInquiries').onclick=load;
- return panel;
-}
-async function token(){try{const raw=localStorage.getItem('sb-ptzurrebwksuvuakgvym-auth-token');if(raw){const j=JSON.parse(raw);return j?.access_token||j?.currentSession?.access_token||''}}catch(e){}try{const keys=Object.keys(localStorage).filter(k=>k.includes('ptzurrebwksuvuakgvym')&&k.includes('auth-token'));for(const k of keys){const j=JSON.parse(localStorage.getItem(k)||'{}');if(j?.access_token)return j.access_token}}catch(e){}return ''}
-async function load(){
- const panel=ensurePanel();if(!panel)return;const box=panel.querySelector('#websiteInquiryList');
- try{const t=await token();if(!t){box.innerHTML='<div class="muted">Website inquiries are available after employee authentication.</div>';return}
- const r=await fetch(API,{headers:{Authorization:'Bearer '+t,apikey:KEY},cache:'no-store'});const j=await r.json();if(!r.ok)throw new Error(j.error||'Unable to load');const arr=j.inquiries||[];
- box.innerHTML=arr.length?arr.map(q=>`<article style="border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:14px;background:rgba(255,255,255,.04)"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><b>${esc(q.full_name)}</b>${q.company?' · '+esc(q.company):''}<div class="muted" style="font-size:12px;margin-top:4px">${esc(q.email)}${q.website?' · '+esc(q.website):''}</div></div><span class="statuspill">NEW LEAD</span></div><div style="margin-top:9px;font-size:12px"><b>Service:</b> ${esc((q.services||[]).join(', ')||'Not specified')} ${q.budget?' · <b>Budget:</b> '+esc(q.budget):''}</div>${q.goals?'<div class="muted" style="margin-top:7px;font-size:12px">'+esc(q.goals)+'</div>':''}<div class="muted" style="font-size:10px;margin-top:8px">Website inquiry · ${new Date(q.created_at).toLocaleString()}</div></article>`).join(''):'<div class="muted">No website inquiries yet.</div>';
- }catch(e){box.innerHTML='<div style="color:#ffd4d4">Could not load website inquiries. '+esc(e.message)+'</div>'}
-}
-ensurePanel();load();setInterval(load,30000);window.addEventListener('focus',load);
+function token(){try{for(const k of Object.keys(localStorage)){if(k.includes('ptzurrebwksuvuakgvym')&&k.includes('auth-token')){const j=JSON.parse(localStorage.getItem(k)||'{}');const t=j?.access_token||j?.currentSession?.access_token;if(t)return t}}}catch(e){}return ''}
+function nextId(){const nums=(window.leads||leads||[]).map(l=>String(l.id||'').match(/^VYRA-(\d+)$/i)).filter(Boolean).map(m=>+m[1]);return 'VYRA-'+String((nums.length?Math.max(...nums):0)+1).padStart(4,'0')}
+function service(q){const s=(q.services||[]).filter(Boolean);return s.length===1?s[0]:(s.length>1?'Multiple Services':'Other')}
+function notify(q){let box=document.getElementById('websiteLeadNotice');if(!box){box=document.createElement('div');box.id='websiteLeadNotice';box.style.cssText='position:fixed;right:22px;top:22px;z-index:99999;max-width:390px;background:#e7c979;color:#07142e;border-radius:16px;padding:16px 18px;box-shadow:0 18px 55px #0008;font:700 13px Arial';document.body.appendChild(box)}box.innerHTML='✦ <b>NEW WEBSITE INQUIRY</b><br><span style="font-weight:500">'+esc(q.full_name)+(q.company?' · '+esc(q.company):'')+' was automatically added to Lead Records.</span>';box.onclick=()=>box.remove();setTimeout(()=>box?.remove(),9000)}
+async function mark(id,t){await fetch(API,{method:'POST',headers:{Authorization:'Bearer '+t,apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({id})})}
+async function load(){if(busy)return;busy=true;try{const t=token();if(!t)return;const r=await fetch(API,{headers:{Authorization:'Bearer '+t,apikey:KEY},cache:'no-store'});const j=await r.json();if(!r.ok)throw new Error(j.error||'Unable to load inquiries');const pending=(j.inquiries||[]).filter(q=>!q.pipeline_added);if(!pending.length)return;
+ if(typeof window.syncFromServer==='function')await window.syncFromServer(false);
+ for(const q of pending.slice().reverse()){
+   const duplicate=(window.leads||leads||[]).find(l=>String(l.email||'').toLowerCase()===String(q.email||'').toLowerCase()&&String(l.source||'').toLowerCase()==='website');
+   if(duplicate){await mark(q.id,t);continue}
+   const note=['Website inquiry received',q.website?'Website: '+q.website:'',q.budget?'Budget: '+q.budget:'',q.goals?'Goals / Message: '+q.goals:''].filter(Boolean).join(' | ');
+   const l=normalize({id:nextId(),name:q.full_name||'',business:q.company||'',email:q.email||'',phone:'',facebook:'',instagram:'',country:'',service:service(q),source:'Website',status:'New Lead',assigned:'',last:new Date(q.created_at).toISOString().slice(0,10),next:'',activities:[{at:q.created_at||new Date().toISOString(),by:'VYRA Website',type:'Website Inquiry',result:'New Lead',notes:note}]});
+   await upsert(l);leads.unshift(l);saveLocal();await mark(q.id,t);notify(q);
+ }
+ if(typeof window.syncFromServer==='function')await window.syncFromServer(false);else{render();refreshLeadSelectors()}
+ }catch(e){console.error('Website inquiry auto-import failed:',e)}finally{busy=false}}
+load();setInterval(load,10000);window.addEventListener('focus',load);document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
 })();
