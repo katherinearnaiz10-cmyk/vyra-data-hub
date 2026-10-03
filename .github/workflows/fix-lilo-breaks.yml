@@ -1,0 +1,33 @@
+name: Fix LILO break controls
+
+on:
+  push:
+    paths:
+      - fix-lilo-breaks.trigger
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch LILO break actions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lilo.html')
+          s = p.read_text()
+          old = "async function action(a){if(busy)return;let c=calc(emp,today()),last=c.a[c.a.length-1],lt=type(last?.type);if(a==='LOGIN'&&c.login&&lt!=='LOGOUT')return alert('You are already logged in today.');if(a!=='LOGIN'&&!c.login)return alert('Please log in first.');if(a==='LOGOUT'&&lt==='LOGOUT')return alert('You already logged out today.');if(['BREAK15','LUNCH30'].includes(a)&&['BREAK15','LUNCH30'].includes(lt))return alert('You are already on break.');if(a==='RESUME'&&!['BREAK15','LUNCH30'].includes(lt))return alert('No active break to resume from.');try{setBusy(true);await postData({employee:emp,action:a});await syncData()}catch(e){alert('Record was NOT saved: '+e.message);setBusy(false)}}"
+          new = "async function action(a){if(busy)return;let c=calc(emp,today()),last=c.a[c.a.length-1],lt=type(last?.type);if(a==='LOGIN'&&c.login&&lt!=='LOGOUT')return alert('You are already logged in today.');if(a!=='LOGIN'&&!c.login)return alert('Please log in first.');if(a==='LOGOUT'&&lt==='LOGOUT')return alert('You already logged out today.');if(['BREAK15','LUNCH30'].includes(a)&&['BREAK15','LUNCH30'].includes(lt))return alert('You are already on break.');if(a==='RESUME'&&!['BREAK15','LUNCH30'].includes(lt))return alert('No active break to resume from.');let minutes=a==='BREAK15'?15:a==='LUNCH30'?30:0;try{setBusy(true);await postData({employee:emp,action:a,type:a,eventType:a,minutes:minutes,note:a==='BREAK15'?'15-minute break':a==='LUNCH30'?'30-minute lunch break':a==='RESUME'?'Resume work':''});await syncData()}catch(e){alert('Record was NOT saved: '+e.message);setBusy(false)}}"
+          if old not in s:
+              raise SystemExit('Expected LILO action function was not found; no changes made.')
+          p.write_text(s.replace(old,new))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lilo.html
+          git rm -f fix-lilo-breaks.trigger
+          git commit -m "Fix LILO break and resume controls"
+          git push
