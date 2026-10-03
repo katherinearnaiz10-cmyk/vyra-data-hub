@@ -13,7 +13,7 @@
           if(d.getElementById(INNER_ID))return;
           const s=d.createElement('script');
           s.id=INNER_ID;
-          s.src='notes-delete.js?v=20261003-2';
+          s.src='notes-delete.js?v=20261003-3';
           d.body.appendChild(s);
         }catch(e){}
       };
@@ -40,21 +40,31 @@
     if(!container)return;
     const l=getLead();
     if(!l||!Array.isArray(l.activities))return;
+
     const events=[...container.querySelectorAll('.event')];
     events.forEach((event,i)=>{
       if(event.querySelector('.vyra-note-delete'))return;
+
       const activity=l.activities[i];
       if(!activity||!String(activity.notes||'').trim())return;
+
       const b=document.createElement('button');
       b.type='button';
       b.className='vyra-note-delete';
       b.textContent='🗑 Delete Note';
+      b.title='Delete only this note';
+
       b.onclick=async function(ev){
+        ev.preventDefault();
         ev.stopPropagation();
-        if(!confirm('Delete this note? This will remove it for the whole team.'))return;
+        if(!confirm('Delete this note? The activity record will stay in the timeline.'))return;
+
         const current=getLead();
-        if(!current||!current.activities||!current.activities[i])return;
-        current.activities.splice(i,1);
+        if(!current||!Array.isArray(current.activities)||!current.activities[i])return;
+
+        // Delete only the note; keep the activity record intact.
+        current.activities[i].notes='';
+
         try{
           if(typeof saveLocal==='function')saveLocal();
           if(typeof render==='function')render();
@@ -62,9 +72,10 @@
           if(typeof renderTimeline==='function')renderTimeline(current,container);
           if(typeof refreshLeadSelectors==='function')refreshLeadSelectors();
         }catch(e){
-          alert('Note was removed locally, but shared sync failed: '+(e.message||e));
+          alert('The note was cleared locally, but shared sync failed: '+(e.message||e));
         }
       };
+
       event.appendChild(b);
     });
   }
